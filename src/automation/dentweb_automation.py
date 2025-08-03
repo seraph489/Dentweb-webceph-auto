@@ -302,6 +302,184 @@ class DentwebOCRExtractor:
         except Exception as e:
             print(f"최종 창 복원 확인 중 오류: {e}")
     
+    def force_restore_dentweb_window(self) -> Optional[Dict]:
+        """최소화된 덴트웹 창을 강제로 찾아서 최대화하는 최강 메서드"""
+        try:
+            print("🔍 최소화된 덴트웹 창을 강제로 찾아서 복원합니다...")
+            
+            all_windows = []
+            
+            def force_enum_callback(hwnd, windows):
+                try:
+                    # 모든 창을 무조건 검사 (보이지 않는 창도 포함)
+                    window_title = win32gui.GetWindowText(hwnd)
+                    if window_title:
+                        try:
+                            class_name = win32gui.GetClassName(hwnd)
+                        except:
+                            class_name = ""
+                        
+                        # 덴트웹 관련 키워드 확장 검색
+                        dentweb_keywords = [
+                            'dentweb', 'dentWeb', 'DentWeb', 'DENTWEB',
+                            '덴트웹', '덴트 웹', '치과관리', '치과 관리',
+                            'dental', 'Dental', 'DENTAL',
+                            '▶ 덴트웹', '덴트웹 ::', 'Chart No'
+                        ]
+                        
+                        is_dentweb = any(keyword.lower() in window_title.lower() 
+                                       for keyword in dentweb_keywords)
+                        
+                        if is_dentweb:
+                            # 창 상태 정보 수집
+                            rect = win32gui.GetWindowRect(hwnd)
+                            is_visible = win32gui.IsWindowVisible(hwnd)
+                            is_enabled = win32gui.IsWindowEnabled(hwnd)
+                            
+                            # 최소화 상태 확인
+                            try:
+                                import win32con
+                                placement = win32gui.GetWindowPlacement(hwnd)
+                                show_state = placement[1]
+                                is_minimized = (show_state == win32con.SW_SHOWMINIMIZED)
+                            except:
+                                is_minimized = (rect[0] < -30000 or rect[1] < -30000)
+                            
+                            window_info = {
+                                'hwnd': hwnd,
+                                'title': window_title,
+                                'class_name': class_name,
+                                'rect': rect,
+                                'is_visible': is_visible,
+                                'is_enabled': is_enabled,
+                                'is_minimized': is_minimized,
+                                'show_state': placement[1] if 'placement' in locals() else None
+                            }
+                            
+                            windows.append(window_info)
+                            print(f"덴트웹 관련 창 발견: '{window_title}' (최소화: {is_minimized}, 보임: {is_visible})")
+                            
+                except Exception as e:
+                    pass  # 개별 창 처리 실패는 무시하고 계속
+                
+                return True
+            
+            # 모든 창 스캔
+            win32gui.EnumWindows(force_enum_callback, all_windows)
+            
+            if not all_windows:
+                print("❌ 덴트웹 창을 전혀 찾을 수 없습니다")
+                return None
+            
+            print(f"📋 총 {len(all_windows)}개의 덴트웹 관련 창 발견")
+            
+            # 가장 적합한 창 선택 (최소화된 창 우선)
+            target_window = None
+            
+            # 1. 최소화된 창 중에서 선택
+            minimized_windows = [w for w in all_windows if w['is_minimized']]
+            if minimized_windows:
+                target_window = minimized_windows[0]
+                print(f"✅ 최소화된 창 선택: {target_window['title']}")
+            else:
+                # 2. 보이지 않는 창 중에서 선택
+                hidden_windows = [w for w in all_windows if not w['is_visible']]
+                if hidden_windows:
+                    target_window = hidden_windows[0]
+                    print(f"✅ 숨겨진 창 선택: {target_window['title']}")
+                else:
+                    # 3. 아무 창이나 선택
+                    target_window = all_windows[0]
+                    print(f"✅ 첫 번째 창 선택: {target_window['title']}")
+            
+            # 선택된 창 강력 복원
+            if target_window:
+                restore_success = self._force_restore_window(target_window)
+                if restore_success:
+                    return target_window
+                else:
+                    print("❌ 덴트웹 창 복원에 실패했습니다.")
+                    return None
+            
+            return None
+            
+        except Exception as e:
+            print(f"❌ 강제 창 복원 중 오류: {e}")
+            return None
+    
+    def _force_restore_window(self, window_info: Dict):
+        """창을 가장 강력한 방법으로 복원"""
+        try:
+            hwnd = window_info['hwnd']
+            title = window_info['title']
+            
+            print(f"🚀 '{title}' 창을 강력하게 복원합니다...")
+            
+            import time
+            
+            # 1단계: 기본 복원 시퀀스
+            restoration_commands = [
+                (9, "SW_RESTORE"),      # 복원
+                (5, "SW_SHOW"),         # 보이기
+                (1, "SW_SHOWNORMAL"),   # 일반 상태
+                (3, "SW_SHOWMAXIMIZED") # 최대화
+            ]
+            
+            for cmd, name in restoration_commands:
+                try:
+                    print(f"  단계: {name}")
+                    win32gui.ShowWindow(hwnd, cmd)
+                    time.sleep(0.3)
+                    
+                    # 각 단계마다 상태 확인
+                    current_rect = win32gui.GetWindowRect(hwnd)
+                    is_visible = win32gui.IsWindowVisible(hwnd)
+                    
+                    if is_visible and current_rect[2] - current_rect[0] > 100:
+                        print(f"  ✅ {name} 성공: {current_rect}")
+                        break
+                    else:
+                        print(f"  ⏳ {name} 진행 중...")
+                        
+                except Exception as step_error:
+                    print(f"  ❌ {name} 실패: {step_error}")
+                    continue
+            
+            # 2단계: 최전면 이동
+            try:
+                print("  단계: 최전면 이동")
+                win32gui.SetForegroundWindow(hwnd)
+                win32gui.BringWindowToTop(hwnd)
+                time.sleep(0.3)
+            except Exception as fg_error:
+                print(f"  ⚠️ 최전면 이동 실패: {fg_error}")
+            
+            # 3단계: 최종 확인
+            final_rect = win32gui.GetWindowRect(hwnd)
+            final_visible = win32gui.IsWindowVisible(hwnd)
+            
+            print(f"🎯 최종 복원 결과:")
+            print(f"  위치: {final_rect}")
+            print(f"  보임: {final_visible}")
+            print(f"  크기: {final_rect[2] - final_rect[0]}x{final_rect[3] - final_rect[1]}")
+            
+            # 창 정보 업데이트
+            window_info['rect'] = final_rect
+            window_info['is_visible'] = final_visible
+            window_info['is_minimized'] = False
+            
+            if final_visible and (final_rect[2] - final_rect[0] > 100):
+                print("✅ 창 복원 성공!")
+                return True
+            else:
+                print("❌ 창 복원 실패!")
+                print("💡 Dentweb 프로그램을 수동으로 최대화한 후 다시 시도해주세요.")
+                return False
+                
+        except Exception as e:
+            print(f"❌ 강력한 창 복원 실패: {e}")
+            return False
+    
     def capture_dentweb_screenshot(self, x: int = None, y: int = None, 
                                  width: int = None, height: int = None) -> Optional[Image.Image]:
         """
@@ -309,8 +487,13 @@ class DentwebOCRExtractor:
         먼저 Dentweb 창을 자동으로 찾고, 실패 시 설정된 좌표 사용
         """
         try:
-            # 1. 먼저 Dentweb 창 자동 인식 시도
+            # 1. 먼저 Dentweb 창 자동 인식 시도 (강화된 방법)
             dentweb_window = self.find_dentweb_window()
+            
+            # 1-1. 기본 방법 실패 시 강력한 방법 사용
+            if not dentweb_window:
+                print("⚠️ 기본 창 찾기 실패 - 강력한 방법으로 재시도...")
+                dentweb_window = self.force_restore_dentweb_window()
             
             if dentweb_window:
                 # Dentweb 창이 발견된 경우, 창 기준 좌측 상단에서 적절한 크기 캡처
@@ -896,51 +1079,75 @@ class DentwebOCRExtractor:
         original_window_state = None
         
         try:
-            print("Dentweb 창 찾기 및 최대화 중...")
+            print("🔍 Dentweb 창 찾기 및 강제 복원 시작...")
             
-            # 1. Dentweb 창 찾기 및 최대화
+            # 1. 기본 방법으로 Dentweb 창 찾기 시도
             dentweb_window = self.find_dentweb_window()
+            
+            # 2. 기본 방법 실패 시 강력한 방법 사용
+            if not dentweb_window:
+                print("⚠️ 기본 방법으로 창을 찾지 못함 - 강력한 방법 시도...")
+                dentweb_window = self.force_restore_dentweb_window()
+            
             if dentweb_window:
                 hwnd = dentweb_window['hwnd']
                 
-                # 현재 창 상태 확인 및 복원
+                # 현재 창 상태 최종 확인
                 current_rect = win32gui.GetWindowRect(hwnd)
-                print(f"현재 창 상태: {current_rect}")
+                is_visible = win32gui.IsWindowVisible(hwnd)
                 
-                # 최소화되어 있는지 다시 한번 확인
-                if (current_rect[0] < -30000 or current_rect[1] < -30000 or 
-                    current_rect[2] - current_rect[0] <= 0):
-                    print("창이 여전히 최소화되어 있음 - 강제 복원 시도...")
-                    try:
-                        # 강력한 복원 시퀀스
-                        win32gui.ShowWindow(hwnd, 9)  # SW_RESTORE
-                        import time
-                        time.sleep(0.3)
-                        win32gui.ShowWindow(hwnd, 1)  # SW_SHOWNORMAL  
-                        time.sleep(0.3)
-                        win32gui.SetForegroundWindow(hwnd)
-                        win32gui.BringWindowToTop(hwnd)
-                        time.sleep(0.3)
+                print(f"📊 현재 창 상태:")
+                print(f"  위치: {current_rect}")
+                print(f"  보임: {is_visible}")
+                print(f"  크기: {current_rect[2] - current_rect[0]}x{current_rect[3] - current_rect[1]}")
+                
+                # 창이 여전히 문제가 있으면 추가 복원
+                if (not is_visible or current_rect[0] < -30000 or current_rect[1] < -30000 or 
+                    current_rect[2] - current_rect[0] <= 100):
+                    
+                    print("⚠️ 창 상태가 여전히 불완전 - 최종 강력 복원...")
+                    restore_success = self._force_restore_window(dentweb_window)
+                    
+                    if not restore_success:
+                        print("❌ 덴트웹 창 복원 실패!")
+                        print("🔧 해결 방법:")
+                        print("  1. 덴트웹 프로그램을 수동으로 최대화해주세요")
+                        print("  2. 덴트웹이 다른 모니터에 열려있는지 확인해주세요")
+                        print("  3. 덴트웹을 재시작한 후 다시 시도해주세요")
                         
-                        # 복원 결과 확인
-                        restored_rect = win32gui.GetWindowRect(hwnd)
-                        print(f"복원 후 창 상태: {restored_rect}")
-                    except Exception as restore_error:
-                        print(f"창 복원 중 오류: {restore_error}")
+                        raise Exception("덴트웹 창을 복원할 수 없습니다. 위 방법을 시도한 후 다시 실행해주세요.")
+                    
+                    # 복원 후 재확인
+                    current_rect = win32gui.GetWindowRect(hwnd)
+                    print(f"최종 복원 후 상태: {current_rect}")
                 
                 # 현재 창 상태 저장 (복원을 위해)
-                original_window_state = win32gui.GetWindowRect(hwnd)
+                original_window_state = current_rect
                 
-                # 창 최대화
-                print("Dentweb 창을 최대화합니다...")
-                win32gui.ShowWindow(hwnd, 3)  # SW_MAXIMIZE
-                win32gui.SetForegroundWindow(hwnd)  # 최전면으로 이동
-                
-                import time
-                time.sleep(0.5)  # 최대화 완료 대기
-                print("Dentweb 창이 최대화되었습니다")
+                # 창 최대화 (OCR을 위해)
+                print("🔧 Dentweb 창을 최대화합니다...")
+                try:
+                    win32gui.ShowWindow(hwnd, 3)  # SW_MAXIMIZE
+                    win32gui.SetForegroundWindow(hwnd)  # 최전면으로 이동
+                    
+                    import time
+                    time.sleep(0.8)  # 최대화 완료 충분한 대기
+                    
+                    # 최대화 결과 확인
+                    maximized_rect = win32gui.GetWindowRect(hwnd)
+                    print(f"✅ 최대화 완료: {maximized_rect}")
+                    
+                except Exception as max_error:
+                    print(f"⚠️ 최대화 중 오류: {max_error}")
+                    
             else:
-                print("Dentweb 창을 찾을 수 없어 기본 설정으로 진행합니다")
+                print("❌ 모든 방법으로도 Dentweb 창을 찾을 수 없습니다")
+                print("🔧 해결 방법:")
+                print("  1. 덴트웹 프로그램이 실행 중인지 확인해주세요")
+                print("  2. 덴트웹 프로그램을 재시작해주세요")
+                print("  3. 덴트웹이 다른 사용자 계정으로 실행 중인지 확인해주세요")
+                
+                raise Exception("덴트웹 프로그램을 찾을 수 없습니다. 덴트웹을 실행한 후 다시 시도해주세요.")
             
             print("Dentweb 스크린샷 촬영 중...")
             
