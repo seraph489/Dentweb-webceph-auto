@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(timeout:*)",
+      "Bash(wmic process where:*)",
+      "Bash(taskkill:*)",
+      "Bash(cmd /c:*)",
+      "Bash(npx:*)",
+      "Bash(docker run:*)",
+      "Bash(docker:*)"
+    ],
+    "deny": []
+  }
+}
